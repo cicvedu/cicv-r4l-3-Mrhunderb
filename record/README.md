@@ -38,10 +38,9 @@
 
 #### Question
 - 作业5中的字符设备/dev/cicv是怎么创建的？它的设备号是多少？它是如何与我们写的字符设备驱动关联上的？
-1. `chrdev::Registration::new_pinned` 函数用于注册字符设备
-2. 设备号是动态分配的，设备号为248 
-![](./pic/11.png)
-3. 在 `init` 函数中，使用 `chrdev_reg.as_mut().register::<RustFile>()` 方法将 RustFile 结构体注册为设备的操作处理器。当内核接收到对字符设备的操作请求时，它会通过 `RustFile` 结构体来处理这些请求
+1. 在build_image.sh脚本中通过`mknod /dev/cicv c 248 0`创建
+2. 设备号为248 
+3. 在 `init` 函数中，使用 `chrdev::Registration::new_pinned(name, 0, module)` 方法，将字符设备的name传入，从而关联。
 
 ## 项目测验
 1. 创建initramfs镜像
