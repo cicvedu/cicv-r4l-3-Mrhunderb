@@ -44,3 +44,15 @@
 3. 在 `init` 函数中，使用 `chrdev_reg.as_mut().register::<RustFile>()` 方法将 RustFile 结构体注册为设备的操作处理器。当内核接收到对字符设备的操作请求时，它会通过 `RustFile` 结构体来处理这些请求
 
 ## 项目测验
+1. 创建initramfs镜像
+![](./pic/12.png)
+![](./pic/13.png)
+![](./pic/14.png)
+![](./pic/15.png)
+2. 编写init脚本
+![](./pic/17.png)
+![](./pic/16.png)
+![](./pic/18.png)
+3. 启动NFS以及telnet服务
+![](./pic/19.png)
+4. 用rust重构002_completion
