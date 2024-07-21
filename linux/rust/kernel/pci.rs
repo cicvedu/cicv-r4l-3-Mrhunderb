@@ -87,8 +87,9 @@ impl<T: Driver> Adapter<T> {
         //   - the allocation happened in `probe`, no-one freed the memory,
         //     `remove` is the canonical kernel location to free driver data. so OK
         //     to convert the pointer back to a Rust structure here.
+        let mut dev = unsafe { Device::from_ptr(pdev) };
         let data = unsafe { T::Data::from_pointer(ptr) };
-        T::remove(&data);
+        T::remove(&mut dev, &data);
         <T::Data as driver::DeviceRemoval>::device_remove(&data);
     }
 }
@@ -224,7 +225,7 @@ pub trait Driver {
     ///
     /// Called when a platform device is removed.
     /// Implementers should prepare the device for complete removal here.
-    fn remove(_data: &Self::Data);
+    fn remove(dev: &mut Device, _data: &Self::Data);
 }
 
 /// PCI resource
@@ -277,6 +278,12 @@ impl Device {
         unsafe { bindings::pci_set_master(self.ptr) };
     }
 
+    /// disables bus-mastering for device
+    pub fn clear_master(&self) {
+        // SAFETY: By the type invariants, we know that `self.ptr` is non-null and valid.
+        unsafe { bindings::pci_clear_master(self.ptr) };
+    }
+
     /// get legacy irq number
     pub fn irq(&self) -> u32 {
         // SAFETY: By the type invariants, we know that `self.ptr` is non-null and valid.
@@ -292,6 +299,12 @@ impl Device {
         } else {
             Ok(())
         }
+    }
+
+    /// Disable device
+    pub fn disable_device(&mut self) {
+        // SAFETY: By the type invariants, we know that `self.ptr` is non-null and valid.
+        unsafe { bindings::pci_disable_device(self.ptr) };
     }
 
     /// iter PCI Resouces
@@ -321,6 +334,11 @@ impl Device {
         } else {
             Ok(())
         }
+    }
+    
+    /// Release selected PCI I/O and memory resources
+    pub fn release_selected_regions(&mut self, bars: i32) {
+        unsafe { bindings::pci_release_selected_regions(self.ptr, bars) };
     }
 
     /// Get address for accessing the device
