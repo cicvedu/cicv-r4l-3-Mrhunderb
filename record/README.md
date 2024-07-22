@@ -88,6 +88,29 @@ impl pci::Driver for E1000Drv {
 ![](./pic/21.png)
 
 ### 作业5：注册字符设备
+实现文件读写方法
+```rust
+impl file::Operations for RustFile {
+    fn write(this: &Self,_file: &file::File,reader: &mut impl kernel::io_buffer::IoBufferReader,_offset:u64,) -> Result<usize> {
+        let mut buf = this.inner.lock();
+        let len = core::cmp::min(reader.len(), GLOBALMEM_SIZE);
+        reader.read_slice(&mut buf[0..][..len])?;
+        Ok(len)
+    }
+
+    fn read(this: &Self,_file: &file::File,writer: &mut impl kernel::io_buffer::IoBufferWriter, offset:u64,) -> Result<usize> {
+        let buf = this.inner.lock();
+        let mut len = core::cmp::min(writer.len(), GLOBALMEM_SIZE);
+        if len <= offset as usize {
+            len = 0;
+        }
+        writer.write_slice(&buf[0..][..len])?;
+        Ok(len)
+    }
+}
+```
+
+效果展示
 ![](./pic/10.png)
 
 #### Question
@@ -111,3 +134,135 @@ impl pci::Driver for E1000Drv {
 ![](./pic/23.png)
 内部可以访问
 4. 用rust重构002_completion
+
+在kernel中包装Completion类
+```rust
+// linux/rust/kernel/sync/completion.rs
+
+use crate::{bindings,  Opaque};
+use core::marker::PhantomPinned;
+
+
+/// A wrapper around a kernel completion object.
+pub struct Completion {
+    completion: Opaque<bindings::completion>,
+}
+
+impl Completion {
+    /// The caller must call `completion_init!` before using the conditional variable.
+    pub const unsafe fn new() -> Self {
+        Self {
+            completion: Opaque::uninit(),
+        }
+    }
+
+    /// Initialise the completion.
+    pub fn init(&self) {
+        unsafe {
+            bindings::init_completion(self.completion())
+        };
+    }
+
+    /// Wait for the completion to complete.
+    pub fn wait_for_completion(&self) {
+        unsafe { bindings::wait_for_completion(self.completion.get()) }
+    }
+
+    /// Complete the completion.
+    pub fn complete(&self) {
+        unsafe { bindings::complete(self.completion.get()) }
+    }
+
+    /// Get the completion pointer.
+    pub fn completion(&self) -> *mut bindings::completion {
+        self.completion.get()
+    }
+}
+
+```
+rust重构
+```rust
+module! {
+    type: CompletionChrDev,
+    name: "rust_completion",
+    author: "Tester",
+    description: "Rust completion sample",
+    license: "GPL",
+}
+
+static COMPLETION: Completion = unsafe { Completion::new() };
+
+struct CompletionFile {
+    completed: &'static Completion,
+}
+
+#[vtable]
+impl file::Operations for CompletionFile {
+    type Data = Box<Self>;
+
+    fn open(_shared: &(), _file: &file::File) -> Result<Box<Self>> {
+        pr_info!("open() is invoked\n");
+        Ok(
+            Box::try_new(CompletionFile {
+                completed: &COMPLETION,
+            })?
+        )
+    }
+
+
+    fn read(this: &Self, _file: &file::File, _writer: &mut impl IoBufferWriter, _offset: u64) -> Result<usize> {
+        pr_info!("read() is invoked\n");
+
+        let task = Task::current();
+
+        pr_info!("process {} is going to sleep\n",task.pid());
+        this.completed.wait_for_completion();
+        pr_info!("awoken {}\n", task.pid());
+        Ok(0)
+    }
+
+    fn write(this: &Self, _file: &file::File, reader: &mut impl IoBufferReader, _offset: u64) -> Result<usize> {
+        pr_info!("write() is invoked\n");
+
+        let task = Task::current();
+        pr_info!("process {} awakening the readers...\n", task.pid());
+        pr_info!("data.len() = {}\n", reader.len());
+        this.completed.complete();
+        
+        Ok(reader.len())
+    }
+
+    fn release(_data: Self::Data, _file: &file::File) {
+        pr_info!("release() is invoked\n");
+    }
+}
+
+struct CompletionChrDev {
+    _dev: Pin<Box<chrdev::Registration<1>>>,
+}
+
+impl kernel::Module for CompletionChrDev {
+    fn init(name: &'static CStr, module: &'static ThisModule) -> Result<Self> {
+        pr_info!("completion_example is loaded\n");
+
+        COMPLETION.init();
+        let mut chrdev_reg = chrdev::Registration::new_pinned(name, 0, module)?;
+
+        // Register the same kind of device twice, we're just demonstrating
+        // that you can use multiple minors. There are two minors in this case
+        // because its type is `chrdev::Registration<2>`
+        chrdev_reg.as_mut().register::<CompletionFile>()?;
+
+        Ok(CompletionChrDev { _dev: chrdev_reg })
+    }
+}
+
+impl Drop for CompletionChrDev {
+    fn drop(&mut self) {
+        pr_info!("completion_example is unloaded\n");
+    }
+}
+```
+
+5. 效果展示
+![](./pic/24.png)
