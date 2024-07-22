@@ -27,6 +27,7 @@ use core::{cell::UnsafeCell, mem::MaybeUninit, pin::Pin};
 mod arc;
 mod condvar;
 mod guard;
+mod completion;
 mod locked_by;
 mod mutex;
 mod nowait;
@@ -39,6 +40,7 @@ mod spinlock;
 
 pub use arc::{new_refcount, Arc, ArcBorrow, StaticArc, UniqueArc};
 pub use condvar::CondVar;
+pub use completion::Completion;
 pub use guard::{Guard, Lock, LockFactory, LockInfo, LockIniter, ReadLock, WriteLock};
 pub use locked_by::LockedBy;
 pub use mutex::{Mutex, RevocableMutex, RevocableMutexGuard};
